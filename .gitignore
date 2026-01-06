@@ -1,4 +1,18 @@
-.settings/
-Debug/
-
-.DS_Store
+# Build files  
+Release/  
+Debug/  
+build/  
+  
+# IDE files  
+*.launch  
+.settings/  
+  
+# Object files  
+*.o  
+*.su  
+  
+# Output files  
+*.elf  
+*.hex  
+*.bin  
+*.map 
