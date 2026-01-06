@@ -19,6 +19,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "spi.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -50,6 +52,7 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+uint16_t read_adc_value(void);
 
 /* USER CODE END PFP */
 
@@ -64,6 +67,7 @@ void SystemClock_Config(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -87,7 +91,14 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_SPI1_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); //Start PWM generationm on TIM1 channel 1
+
+  //Set initnial duty cycle (5% = 1 ms at 50 hz)
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 1000);
 
   /* USER CODE END 2 */
 
@@ -95,6 +106,23 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  uint16_t adc_raw = 0;
+	  uint16_t pwm_duty = 0;
+
+	  //Read adc from potentiometr
+	  adc_raw = read_adc_value();
+
+	  //Map ADC value (0-1023) to PWM pulse width (1000-2000)
+	  //This gives 1ms ro 2ms pulse width for 50hz signal
+
+	  pwm_duty  = 1000 +(adc_raw * 1000 /1023);
+
+
+	  //set pwm duty cycle
+	  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_duty);
+
+	  //Delay to prevent overload to the ADC
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -122,6 +150,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
   /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
@@ -144,6 +173,37 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
+uint16_t read_adc_value(void){
+	uint8_t tx_data[3] = {0};
+	uint8_t rx_data[3] = {0};
+	uint16_t adc_value = 0;
+
+
+	//MCP3005 command fromat for single ended channel
+	//start bit  = 1, SGL/ DIFF  = 1 (singl end) D2,D1,D1 = 000
+
+	tx_data[0] =  0x01; //start bit
+	tx_data[1] = 0x80; // 1 (SGL/DIFF) + 000  == 1000 0000 = 0x80
+	tx_data[2] = 0x00;
+
+	//Pull cs to low to select adc
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+
+	//Trasmit and receive data simultaneously
+    HAL_SPI_TransmitReceive(&hspi1, tx_data, rx_data, 3, HAL_MAX_DELAY);
+
+
+    //Pull cs High to deselect ADC
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+
+    //Extract 10-bit ADC value from response
+    //rx_data[1] contains bit 9-2, rx_data[2 constains bits 1-0
+
+    adc_value = ((rx_data[1] & 0x03) << 8) | rx_data[2];
+
+    return adc_value;
+}
+
 /* USER CODE END 4 */
 
 /**
@@ -160,8 +220,7 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
@@ -177,5 +236,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
